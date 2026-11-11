@@ -1,0 +1,49 @@
+name: TurnosX reservar CrossFit
+
+on:
+  schedule:
+    # Sabado 19:00 UTC = 16:00 hora Argentina. El script espera solo hasta las 17:00:00.
+    # (Se sale una hora antes por si GitHub demora en arrancar el trabajo.)
+    - cron: "0 19 * * 6"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "Que hacer (solo-sesion y prueba NO reservan nada)"
+        type: choice
+        default: solo-sesion
+        options:
+          - solo-sesion
+          - prueba
+          - real
+
+jobs:
+  reservar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Crear sesion.json desde el secreto
+        env:
+          TURNOSX_SESION: ${{ secrets.TURNOSX_SESION }}
+        run: |
+          umask 077
+          printf '%s' "$TURNOSX_SESION" > sesion.json
+
+      - name: Ejecutar
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          MODO: ${{ github.event.inputs.modo || 'real' }}
+        run: |
+          AVISO=""
+          if [ -n "$NTFY_TOPIC" ]; then AVISO="--aviso $NTFY_TOPIC"; fi
+          case "$MODO" in
+            solo-sesion) python reservar_celular.py --solo-sesion $AVISO ;;
+            prueba)      python reservar_celular.py --prueba --ahora $AVISO ;;
+            real)        python reservar_celular.py $AVISO ;;
+            *)           echo "Modo desconocido: $MODO"; exit 1 ;;
+          esac
