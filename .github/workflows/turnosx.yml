@@ -3,14 +3,13 @@ name: TurnosX reservar CrossFit
 
 on:
   schedule:
-    # Sabado 19:00 UTC = 16:00 hora Argentina.
-    # El script espera solo hasta las 17:00:00.
+    # Sábado 19:00 UTC = 16:00 Argentina.
     - cron: "0 19 * * 6"
 
   workflow_dispatch:
     inputs:
       modo:
-        description: "Que hacer (solo-sesion y prueba NO reservan nada)"
+        description: "Qué hacer"
         type: choice
         default: solo-sesion
         options:
@@ -18,10 +17,16 @@ on:
           - prueba
           - real
 
+# Permisos necesarios para actualizar el secreto del repositorio.
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   reservar:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+
     steps:
       - uses: actions/checkout@v6
 
@@ -41,12 +46,38 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           MODO: ${{ github.event.inputs.modo || 'real' }}
         run: |
-          AVISO=""
-          if [ -n "$NTFY_TOPIC" ]; then AVISO="--aviso $NTFY_TOPIC"; fi
+          args=()
+
+          if [ -n "$NTFY_TOPIC" ]; then
+            args+=(--aviso "$NTFY_TOPIC")
+          fi
+
           case "$MODO" in
-            solo-sesion) python reservar_celular.py --solo-sesion $AVISO ;;
-            prueba)      python reservar_celular.py --prueba --ahora $AVISO ;;
-            real)        python reservar_celular.py $AVISO ;;
-            *)           echo "Modo desconocido: $MODO"; exit 1 ;;
+            solo-sesion)
+              python reservar_celular.py --solo-sesion "${args[@]}"
+              ;;
+            prueba)
+              python reservar_celular.py --prueba --ahora "${args[@]}"
+              ;;
+            real)
+              python reservar_celular.py "${args[@]}"
+              ;;
+            *)
+              echo "Modo desconocido: $MODO"
+              exit 1
+              ;;
           esac
 
+      # Guarda la sesión renovada en GitHub, incluso si
+      # el script termina con un error.
+      - name: Persistir sesión renovada en GitHub
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -s sesion.json ]; then
+            gh secret set TURNOSX_SESION < sesion.json
+            echo "Sesión actualizada en GitHub correctamente."
+          else
+            echo "No hay una sesión válida para guardar."
+          fi
