@@ -242,6 +242,8 @@ def buscar_slot(slots, actividad, hora):
 
 def reservar_dia(sesion, sede_id, d, args):
     etiqueta = f"{d:%a %d/%m} {args.hora}"
+    # De lunes a jueves reserva Crossfit; los viernes reserva VLK.
+    actividad_dia = args.actividad_viernes if d.weekday() == 4 else args.actividad
     status, slots = listar_slots(sesion, sede_id, d)
     if status in (401, 403):
         log(f"[!] {etiqueta}: la sesión no sirve (HTTP {status}). Hay que volver a copiar sesion.json.")
@@ -250,10 +252,10 @@ def reservar_dia(sesion, sede_id, d, args):
         log(f"[!] {etiqueta}: error al listar (HTTP {status}): {str(slots)[:200]}")
         return "ERROR"
 
-    s = buscar_slot(slots, args.actividad, args.hora)
+    s = buscar_slot(slots, actividad_dia, args.hora)
     if not s:
         if slots:
-            log(f"[-] {etiqueta}: ese día no hay {args.actividad} a esa hora. Paso al siguiente.")
+            log(f"[-] {etiqueta}: ese día no hay {actividad_dia} a esa hora. Paso al siguiente.")
             return "SIN_CLASE"
         return "NO_ENCONTRADA"   # el día no tiene turnos publicados (todavía)
 
@@ -326,7 +328,10 @@ def esperar_hasta(texto, sesion):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--actividad", default="Crossfit")
+    ap.add_argument("--actividad", default="Crossfit",
+                    help="actividad de lunes a jueves (por defecto Crossfit)")
+    ap.add_argument("--actividad-viernes", default="VLK",
+                    help="actividad de los viernes (por defecto VLK)")
     ap.add_argument("--hora", default="19:00", help="hora de Argentina, ej 19:00")
     ap.add_argument("--sede", default="BOMBAL")
     ap.add_argument("--dias-semana", default="lun,mar,mie,jue,vie")
@@ -370,7 +375,8 @@ def main():
         ok = {mapa[x.strip()[:3]] for x in limpio.split(",") if x.strip()}
         fechas = [f for f in (hoy + timedelta(days=i) for i in range(7)) if f.weekday() in ok]
 
-    log(f"=== {args.actividad} {args.hora} | sede {args.sede} | "
+    log(f"=== Lun-jue: {args.actividad} / Vie: {args.actividad_viernes} "
+        f"{args.hora} | sede {args.sede} | "
         f"{'MODO PRUEBA (no reserva)' if args.prueba else 'RESERVA REAL'} ===")
     log("Días: " + ", ".join(f"{f:%d/%m}" for f in fechas))
 
@@ -415,7 +421,7 @@ def main():
         lineas.append(f"{dias[d.weekday()]} {d:%d/%m} {args.hora}: {r}")
     bien = {"RESERVADO", "YA_RESERVADO", "PRUEBA_OK"}
     todo_ok = all(r in bien for r in resultados.values())
-    texto = f"{args.actividad} {args.sede} {'(PRUEBA)' if args.prueba else ''}\n" + "\n".join(lineas)
+    texto = f"Lun-jue: {args.actividad} / Vie: {args.actividad_viernes} {args.sede} {'(PRUEBA)' if args.prueba else ''}\n" + "\n".join(lineas)
     if sesion.rotado:
         texto += "\nOJO: el servidor cambió el refreshToken; hay que actualizar la sesión guardada."
         log("[!] El servidor cambió el refreshToken: hay que actualizar la sesión guardada.")
