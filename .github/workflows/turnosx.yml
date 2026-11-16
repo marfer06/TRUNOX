@@ -4,7 +4,7 @@ name: TurnosX reservar CrossFit
 on:
   schedule:
     # Sábado 19:00 UTC = 16:00 Argentina.
-    - cron: "0 17 * * 6"
+    - cron: "0 19 * * 6"
 
   workflow_dispatch:
     inputs:
